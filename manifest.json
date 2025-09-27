@@ -1,0 +1,43 @@
+{
+	"manifest_version": 3,
+	"name": "FBI Jumpscare",
+	"version": "1.0.0",
+	"description": "A web extension that will randomly jumpscare someone with an FBI warning.",
+	"author": "Jake Scott",
+	"homepage_url": "https://github.com/JRScott812/FBI-Jumpscare",
+	"permissions": [
+		"scripting",
+		"storage"
+	],
+	"host_permissions": [
+		"<all_urls>",
+		"https://api.ipify.org/*"
+	],
+	"content_scripts": [
+		{
+			"matches": [
+				"<all_urls>"
+			],
+			"js": [
+				"fbi-popup.js"
+			],
+			"run_at": "document_idle",
+			"all_frames": false
+		}
+	],
+	"web_accessible_resources": [
+		{
+			"resources": [
+				"popup.html",
+				"popup.css"
+			],
+			"matches": [
+				"<all_urls>"
+			]
+		}
+	],
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'self'"
+	},
+	"minimum_chrome_version": "88"
+}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FBI Warning</title>
+	<link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+	<div id="fbi-warning-popup" class="warning-overlay">
+		<div class="warning-container">
+			<img id="fbi-seal" class="fbi-seal"
+				src="https://upload.wikimedia.org/wikipedia/commons/d/da/Seal_of_the_Federal_Bureau_of_Investigation.svg"
+				alt="FBI Seal">
+
+			<h1 class="warning-title">FBI WARNING</h1>
+
+			<div class="warning-message">
+				<p class="agency-header">⚠️ FEDERAL BUREAU OF INVESTIGATION ⚠️</p>
+				<p>Your internet activity has been monitored and flagged by federal authorities.</p>
+				<p>This computer has been identified as accessing restricted or illegal content.</p>
+				<p>All activities on this device are being recorded and will be used as evidence.</p>
+				<p class="violation-code">Violation Code: USC-2257-DMCA-001</p>
+				<p class="warning-instruction">Do not close this window or shut down your computer.</p>
+			</div>
+			<div id="system-info" class="system-info">
+				<!-- System information will be populated by JavaScript -->
+			</div>
+			<button id="close-btn" class="close-button hidden">ACKNOWLEDGE WARNING</button>
+		</div>
+	</div>
+</body>
+
+</html>
