@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FBI Jumpscare Settings</title>
+	<link rel="stylesheet" href="extension-popup.css">
+</head>
+
+<body>
+	<div class="header">
+		<img class="logo"
+			src="https://upload.wikimedia.org/wikipedia/commons/d/da/Seal_of_the_Federal_Bureau_of_Investigation.svg"
+			alt="FBI Seal">
+		<h1 class="title">FBI Jumpscare</h1>
+		<p class="subtitle">Configuration Panel</p>
+	</div>
+
+	<div id="status" class="status hidden"></div>
+
+	<div class="setting-group">
+		<label class="setting-label">Jumpscare Probability</label>
+		<div class="percentage-control">
+			<input type="range" id="percentageSlider" class="percentage-slider" min="0" max="100" value="1" step="1">
+			<span id="percentageDisplay" class="percentage-display">1%</span>
+		</div>
+	</div>
+
+	<div class="buttons">
+		<button id="saveBtn" class="btn btn-primary">Save Settings</button>
+		<button id="testBtn" class="btn btn-secondary">Test Now</button>
+	</div>
+
+	<div class="info">
+		Higher percentages = more frequent jumpscares<br>
+		0% = completely disabled<br>
+		Settings are saved automatically
+	</div>
+
+	<script src="extension-popup.js"></script>
+</body>
+
+</html>

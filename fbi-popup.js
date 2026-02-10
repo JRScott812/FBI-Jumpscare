@@ -7,6 +7,16 @@
 		return; // Exit silently if extension context is invalid
 	}
 
+	// Global probability setting
+	let jumpscareProbability = 0.01; // Default 1%
+
+	// Load probability setting from storage
+	chrome.storage.sync.get(['jumpscareProbability'], function (result) {
+		if (result.jumpscareProbability !== undefined) {
+			jumpscareProbability = result.jumpscareProbability / 100; // Convert percentage to decimal
+		}
+	});
+
 	// Function to create and show FBI warning popup
 	function showFBIWarning() {
 		// Check if popup already exists
@@ -228,13 +238,25 @@ All network activity is being monitored and recorded.`;
 
 	// Simple random trigger function
 	function triggerWarning() {
-		// 1% chance to show warning
-		const shouldShow = Math.random() < 0.01;
+		// Use stored probability setting
+		const shouldShow = Math.random() < jumpscareProbability;
 		if (shouldShow) {
 			// Delay to make it more surprising
 			setTimeout(showFBIWarning, Math.random() * 10000 + 2000); // 2-12 seconds delay
 		}
 	}
+
+	// Listen for messages from extension popup
+	chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+		if (request.action === 'updateProbability') {
+			jumpscareProbability = request.probability / 100; // Convert percentage to decimal
+			sendResponse({ success: true });
+		} else if (request.action === 'triggerJumpscare') {
+			showFBIWarning();
+			sendResponse({ success: true });
+		}
+		return true; // Keep message channel open for async response
+	});
 
 	// Wait for page to fully load then potentially trigger warning
 	if (document.readyState === 'loading') {
