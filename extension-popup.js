@@ -14,31 +14,43 @@ document.addEventListener('DOMContentLoaded', function () {
 	});
 
 	// Update display when slider changes
+	// Update display when slider changes and auto-save (debounced)
+	let saveTimeout = null;
 	slider.addEventListener('input', function () {
 		display.textContent = slider.value + '%';
+		// debounce auto-save to avoid rapid storage writes
+		if (saveTimeout) clearTimeout(saveTimeout);
+		saveTimeout = setTimeout(() => {
+			const probability = parseInt(slider.value);
+			saveProbability(probability, false);
+		}, 450);
 	});
 
-	// Save settings
-	saveBtn.addEventListener('click', function () {
-		const probability = parseInt(slider.value);
-
-		chrome.storage.sync.set({
-			jumpscareProbability: probability
-		}, function () {
-			showStatus('Settings saved successfully!', 'success');
+	// Reusable save function
+	function saveProbability(probability, showUiStatus = true) {
+		chrome.storage.sync.set({ jumpscareProbability: probability }, function () {
+			if (showUiStatus) showStatus('Settings saved successfully!', 'success');
 
 			// Notify all tabs of the setting change
 			chrome.tabs.query({}, function (tabs) {
 				tabs.forEach(tab => {
-					chrome.tabs.sendMessage(tab.id, {
-						action: 'updateProbability',
-						probability: probability
-					}).catch(() => {
-						// Ignore errors for tabs that don't have our content script
-					});
+					try {
+						chrome.tabs.sendMessage(tab.id, {
+							action: 'updateProbability',
+							probability: probability
+						});
+					} catch (e) {
+						// ignore tabs without our content script
+					}
 				});
 			});
 		});
+	}
+
+	// Save settings (manual Save button)
+	saveBtn.addEventListener('click', function () {
+		const probability = parseInt(slider.value);
+		saveProbability(probability, true);
 	});
 
 	// Test jumpscare now

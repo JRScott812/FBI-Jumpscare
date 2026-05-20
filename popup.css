@@ -26,15 +26,74 @@
 	flex-direction: column !important;
 	align-items: center !important;
 	justify-content: center !important;
-	max-width: 700px !important;
-	width: 90% !important;
+	max-width: 760px !important;
+	width: min(92vw, 760px) !important;
 	max-height: 90vh !important;
-	background: #ffffff !important;
-	border: 3px solid #003366 !important;
-	box-shadow: 0 0 20px rgba(0, 0, 0, 0.3) !important;
-	padding: 15px !important;
+	background:
+		radial-gradient(circle at top, rgba(0, 51, 102, 0.05), transparent 35%),
+		linear-gradient(180deg, #fbfbf8 0%, #f3efe4 100%) !important;
+	border: 1px solid #7f8d9a !important;
+	box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28) !important;
+	padding: 18px !important;
 	margin: 0 !important;
 	overflow-y: auto !important;
+	position: relative !important;
+}
+
+.warning-container::before {
+	content: '' !important;
+	position: absolute !important;
+	inset: 10px !important;
+	border: 1px solid rgba(0, 51, 102, 0.14) !important;
+	pointer-events: none !important;
+}
+
+.warning-topline {
+	display: flex !important;
+	align-items: center !important;
+	gap: 12px !important;
+	width: 100% !important;
+	margin-bottom: 14px !important;
+	text-transform: uppercase !important;
+	letter-spacing: 2px !important;
+	font-size: 11px !important;
+	font-weight: 700 !important;
+	color: #5b6673 !important;
+}
+
+.topline-rule {
+	height: 1px !important;
+	flex: 1 !important;
+	background: linear-gradient(90deg, transparent, #7f8d9a, transparent) !important;
+}
+
+.topline-label {
+	white-space: nowrap !important;
+}
+
+.warning-header {
+	display: grid !important;
+	grid-template-columns: auto 1fr !important;
+	align-items: center !important;
+	gap: 16px !important;
+	width: 100% !important;
+	padding: 14px 16px !important;
+	background: rgba(255, 255, 255, 0.72) !important;
+	border: 1px solid rgba(0, 51, 102, 0.14) !important;
+	margin-bottom: 14px !important;
+}
+
+.warning-heading-copy {
+	text-align: left !important;
+}
+
+.document-kicker {
+	margin: 0 0 4px 0 !important;
+	font-size: 11px !important;
+	font-weight: 700 !important;
+	letter-spacing: 2px !important;
+	text-transform: uppercase !important;
+	color: #7a1d1d !important;
 }
 
 /* Animations - Subtle and Professional */
@@ -74,117 +133,179 @@
 
 /* FBI Seal - Professional Display */
 .fbi-seal {
-	width: 80px !important;
-	height: 80px !important;
-	margin-bottom: 10px !important;
+	width: 84px !important;
+	height: 84px !important;
+	margin-bottom: 0 !important;
 	animation: none !important;
 	filter: none !important;
-	border: 2px solid #003366 !important;
+	border: 1px solid rgba(0, 51, 102, 0.35) !important;
 	border-radius: 50% !important;
-	background: #ffffff !important;
-	padding: 3px !important;
+	background: rgba(255, 255, 255, 0.88) !important;
+	padding: 4px !important;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
 }
 
 /* Warning Title - Professional Government Style */
 .warning-title {
-	font-size: 24px !important;
+	font-size: 28px !important;
 	font-weight: bold !important;
-	margin: 10px 0 !important;
-	letter-spacing: 1px !important;
-	color: #cc0000 !important;
-	font-family: 'Times New Roman', serif !important;
+	margin: 0 !important;
+	letter-spacing: 0.5px !important;
+	color: #1e2a36 !important;
+	font-family: 'Times New Roman', Georgia, serif !important;
 	text-transform: uppercase !important;
 	animation: none !important;
+}
+
+.warning-subtitle {
+	margin: 6px 0 0 0 !important;
+	font-size: 13px !important;
+	line-height: 1.4 !important;
+	color: #4b5560 !important;
 }
 
 /* Warning Message Box - Clean Government Document Style */
 .warning-message {
 	font-size: 14px !important;
-	line-height: 1.6 !important;
+	line-height: 1.55 !important;
 	max-width: 100% !important;
-	margin: 10px 0 !important;
-	border: 2px solid #cc0000 !important;
-	padding: 15px !important;
-	background: #fafafa !important;
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
-	color: #333333 !important;
-	font-family: Arial, sans-serif !important;
+	margin: 0 0 12px 0 !important;
+	border: 1px solid rgba(126, 141, 154, 0.55) !important;
+	padding: 14px 16px !important;
+	background: rgba(255, 255, 255, 0.84) !important;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+	color: #27313a !important;
+	font-family: Arial, 'Segoe UI', sans-serif !important;
 	text-align: left !important;
 }
 
-.agency-header {
-	margin-bottom: 10px !important;
-	font-size: 16px !important;
-	color: #003366 !important;
-	font-weight: bold !important;
-	text-align: center !important;
-	border-bottom: 2px solid #003366 !important;
-	padding-bottom: 8px !important;
+.document-meta {
+	display: grid !important;
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+	gap: 10px !important;
+	margin-bottom: 12px !important;
+}
+
+.document-meta div {
+	padding: 10px 12px !important;
+	background: #f4f1e8 !important;
+	border: 1px solid rgba(127, 141, 154, 0.45) !important;
+}
+
+.document-meta span {
+	display: block !important;
+	font-size: 10px !important;
+	letter-spacing: 1px !important;
+	text-transform: uppercase !important;
+	color: #6b7280 !important;
+	margin-bottom: 4px !important;
+}
+
+.document-meta strong {
+	display: block !important;
+	font-size: 13px !important;
+	color: #1f2933 !important;
 }
 
 .warning-message p {
-	margin-bottom: 8px !important;
-	color: #333333 !important;
-}
-
-.violation-code {
-	margin: 10px 0 !important;
-	font-size: 12px !important;
-	color: #cc0000 !important;
-	font-weight: bold !important;
-	font-family: 'Courier New', monospace !important;
-	background: #f5f5f5 !important;
-	padding: 6px !important;
-	border: 1px solid #cccccc !important;
+	margin: 0 0 10px 0 !important;
+	color: #2c333a !important;
+	font-family: 'Segoe UI', Arial, sans-serif !important;
 }
 
 .warning-instruction {
-	color: #cc0000 !important;
+	color: #7a1d1d !important;
 	font-weight: bold !important;
 	font-size: 14px !important;
-	margin: 10px 0 0 0 !important;
+	margin: 8px 0 0 0 !important;
 	text-align: center !important;
+	padding-top: 10px !important;
+	border-top: 1px solid rgba(122, 29, 29, 0.2) !important;
 }
 
 /* System Information - Professional Government Report Style */
 .system-info {
 	font-size: 10px !important;
-	color: #333333 !important;
-	background: #f8f8f8 !important;
-	padding: 10px !important;
-	border: 1px solid #cccccc !important;
-	margin: 10px 0 !important;
-	font-family: 'Courier New', monospace !important;
+	color: #29313a !important;
+	background: rgba(248, 246, 240, 0.96) !important;
+	padding: 12px !important;
+	border: 1px solid rgba(127, 141, 154, 0.55) !important;
+	margin: 0 0 12px 0 !important;
+	font-family: 'Courier New', Consolas, monospace !important;
 	text-align: left !important;
 	max-width: 100% !important;
-	box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-	border-radius: 3px !important;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+	border-radius: 2px !important;
 	white-space: pre-line !important;
 	line-height: 1.3 !important;
 	max-height: 200px !important;
 	overflow-y: auto !important;
 }
 
+.warning-footer {
+	display: flex !important;
+	flex-direction: column !important;
+	justify-content: flex-start !important;
+	align-items: center !important;
+	gap: 12px !important;
+	width: 100% !important;
+	margin-bottom: 12px !important;
+	font-size: 10px !important;
+	line-height: 1.35 !important;
+	letter-spacing: 0.6px !important;
+	text-transform: uppercase !important;
+	color: #66707a !important;
+	padding: 0 2px !important;
+}
+
+.footer-notes {
+	display: flex !important;
+	flex-direction: column !important;
+	gap: 4px !important;
+	align-items: center !important;
+	text-align: center !important;
+}
+
+.contact-info {
+	margin-top: 8px !important;
+	font-size: 12px !important;
+	color: #24303a !important;
+	display: flex !important;
+	flex-direction: column !important;
+	gap: 4px !important;
+	justify-content: center !important;
+	align-items: center !important;
+}
+
+.contact-info a {
+	color: #0b4f8a !important;
+	text-decoration: none !important;
+}
+
+.contact-info a:hover {
+	text-decoration: underline !important;
+}
+
 /* Close Button - Professional Government Style */
 .close-button {
-	background: #003366 !important;
-	color: white !important;
-	border: 2px solid #003366 !important;
-	padding: 8px 20px !important;
+	background: linear-gradient(180deg, #1d4a78 0%, #10304d 100%) !important;
+	color: #ffffff !important;
+	border: 1px solid #0b2237 !important;
+	padding: 10px 24px !important;
 	font-size: 12px !important;
 	font-weight: bold !important;
 	cursor: pointer !important;
-	margin-top: 15px !important;
+	margin-top: 0 !important;
 	font-family: Arial, sans-serif !important;
 	letter-spacing: 1px !important;
 	text-transform: uppercase !important;
-	border-radius: 3px !important;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) !important;
+	border-radius: 2px !important;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.24) !important;
 	transition: all 0.3s ease !important;
 }
 
 .close-button:hover {
-	background: #004488 !important;
+	background: linear-gradient(180deg, #245c91 0%, #13344f 100%) !important;
 	transform: none !important;
 	box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3) !important;
 }
@@ -205,13 +326,33 @@
 		padding: 12px;
 	}
 
-	.agency-header {
-		font-size: 14px;
+	.warning-topline {
+		font-size: 10px;
+		gap: 8px;
 	}
 
 	.fbi-seal {
 		width: 60px;
 		height: 60px;
+	}
+
+	.warning-header {
+		grid-template-columns: 1fr;
+		justify-items: center;
+		text-align: center;
+	}
+
+	.warning-heading-copy {
+		text-align: center;
+	}
+
+	.document-meta {
+		grid-template-columns: 1fr;
+	}
+
+	.warning-footer {
+		flex-direction: column;
+		text-align: center;
 	}
 
 	.system-info {
@@ -243,6 +384,10 @@
 		font-size: 12px;
 		padding: 10px;
 		margin: 5px 0;
+	}
+
+	.warning-header {
+		padding: 10px 12px !important;
 	}
 
 	.system-info {

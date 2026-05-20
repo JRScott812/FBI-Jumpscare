@@ -11,22 +11,49 @@
 <body>
 	<div id="fbi-warning-popup" class="warning-overlay">
 		<div class="warning-container">
-			<img id="fbi-seal" class="fbi-seal"
-				src="https://upload.wikimedia.org/wikipedia/commons/d/da/Seal_of_the_Federal_Bureau_of_Investigation.svg"
-				alt="FBI Seal">
+			<div class="warning-topline">
+				<span class="topline-rule"></span>
+				<span class="topline-label">Federal Bureau of Investigation</span>
+				<span class="topline-rule"></span>
+			</div>
 
-			<h1 class="warning-title">FBI WARNING</h1>
+			<div class="warning-header">
+				<img id="fbi-seal" class="fbi-seal" src="assets/Seal_of_the_Federal_Bureau_of_Investigation.svg"
+					alt="FBI Seal">
+
+				<div class="warning-heading-copy">
+					<p class="document-kicker">Official Notice</p>
+					<h1 class="warning-title">Federal Review Pending</h1>
+					<p class="warning-subtitle">This device has been flagged for review by federal authorities.</p>
+				</div>
+			</div>
 
 			<div class="warning-message">
-				<p class="agency-header">⚠️ FEDERAL BUREAU OF INVESTIGATION ⚠️</p>
-				<p>Your internet activity has been monitored and flagged by federal authorities.</p>
-				<p>This computer has been identified as accessing restricted or illegal content.</p>
-				<p>All activities on this device are being recorded and will be used as evidence.</p>
-				<p class="violation-code">Violation Code: USC-2257-DMCA-001</p>
-				<p class="warning-instruction">Do not close this window or shut down your computer.</p>
+				<div class="document-meta">
+					<div><span>Case ID</span><strong id="case-id">Pending</strong></div>
+					<div><span>Status</span><strong>Active Monitoring</strong></div>
+					<div><span>Jurisdiction</span><strong>Cyber Investigations</strong></div>
+				</div>
+
+				<p>Your internet activity has been recorded and associated with this session.</p>
+				<p>This system was identified while accessing content subject to federal review.</p>
+				<p>Network activity, device data, and browser information are being retained for evidentiary use.</p>
+				<p class="warning-instruction">Do not exit this page until the review has been acknowledged.</p>
 			</div>
 			<div id="system-info" class="system-info">
 				<!-- System information will be populated by JavaScript -->
+			</div>
+
+			<div class="warning-footer">
+				<div class="footer-notes">
+					<span>Unauthorized interruption may affect evidence preservation.</span>
+					<span>Reference the case number above when responding.</span>
+				</div>
+				<div class="contact-info">
+					<div>Phone: <strong><a href="tel:18002255324">+1 (800) 225-5324</a></strong></div>
+					<div>Website: <a href="https://www.fbi.gov" target="_blank" rel="noopener">www.fbi.gov</a></div>
+					<div>Email: <strong><a href="mailto:tips@fbi.gov">tips@fbi.gov</a></strong></div>
+				</div>
 			</div>
 			<button id="close-btn" class="close-button hidden">ACKNOWLEDGE WARNING</button>
 		</div>

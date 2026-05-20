@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "FBI Jumpscare",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "A web extension that will randomly jumpscare someone with an FBI warning.",
 	"author": "Jake Scott",
 	"homepage_url": "https://github.com/JRScott812/FBI-Jumpscare",
@@ -11,7 +11,13 @@
 	],
 	"action": {
 		"default_popup": "extension-popup.html",
-		"default_title": "FBI Jumpscare Settings"
+		"default_title": "FBI Jumpscare Settings",
+		"default_icon": {
+			"16": "assets/icon-16.png",
+			"32": "assets/icon-32.png",
+			"48": "assets/icon-48.png",
+			"128": "assets/icon-128.png"
+		}
 	},
 	"host_permissions": [
 		"<all_urls>",
@@ -33,13 +39,27 @@
 		{
 			"resources": [
 				"popup.html",
-				"popup.css"
+				"popup.css",
+				"assets/icon-16.png",
+				"assets/icon-32.png",
+				"assets/icon-48.png",
+				"assets/icon-128.png",
+				"assets/icon-256.png",
+				"assets/icon-1024.png",
+				"assets/Seal_of_the_Federal_Bureau_of_Investigation.svg"
 			],
 			"matches": [
 				"<all_urls>"
 			]
 		}
 	],
+	"icons": {
+		"16": "assets/icon-16.png",
+		"32": "assets/icon-32.png",
+		"48": "assets/icon-48.png",
+		"128": "assets/icon-128.png",
+		"256": "assets/icon-256.png"
+	},
 	"content_security_policy": {
 		"extension_pages": "script-src 'self'; object-src 'self'"
 	},

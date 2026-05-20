@@ -18,7 +18,7 @@
 	});
 
 	// Function to create and show FBI warning popup
-	function showFBIWarning() {
+	async function showFBIWarning() {
 		// Check if popup already exists
 		if (document.getElementById('fbi-warning-popup')) {
 			return;
@@ -30,61 +30,69 @@
 		}
 
 		try {
-			// Fetch the popup HTML template
-			fetch(chrome.runtime.getURL('popup.html'))
-				.then(response => {
-					if (!response.ok) {
-						throw new Error('Failed to fetch popup template');
-					}
-					return response.text();
-				})
-				.then(html => {
-					// Check if extension context is still valid before proceeding
-					if (!chrome.runtime || !chrome.runtime.getURL) {
-						return;
-					}
+			const [html, infoResult] = await Promise.all([
+				fetch(chrome.runtime.getURL('popup.html'))
+					.then(response => {
+						if (!response.ok) {
+							throw new Error('Failed to fetch popup template');
+						}
+						return response.text();
+					}),
+				generateSystemInfo().catch(() => ({
+					text: 'SYSTEM INVESTIGATION REPORT\nSystem information unavailable.',
+					caseNumber: 'Unavailable'
+				}))
+			]);
 
-					// Create a temporary container to parse the HTML
-					const tempDiv = document.createElement('div');
-					tempDiv.innerHTML = html;
+			// Check if extension context is still valid before proceeding
+			if (!chrome.runtime || !chrome.runtime.getURL) {
+				return;
+			}
 
-					// Get the popup element from the template
-					const popup = tempDiv.querySelector('#fbi-warning-popup');
+			// Create a temporary container to parse the HTML
+			const tempDiv = document.createElement('div');
+			tempDiv.innerHTML = html;
 
-					// Load the CSS file
-					const cssLink = document.createElement('link');
-					cssLink.rel = 'stylesheet';
-					cssLink.href = chrome.runtime.getURL('popup.css');
-					document.head.appendChild(cssLink);
+			// Get the popup element from the template
+			const popup = tempDiv.querySelector('#fbi-warning-popup');
 
-					// Update the FBI seal source with the Wikipedia URL
-					const sealImg = popup.querySelector('#fbi-seal');
-					sealImg.src = 'https://upload.wikimedia.org/wikipedia/commons/d/da/Seal_of_the_Federal_Bureau_of_Investigation.svg';
+			// Load the CSS file
+			const cssLink = document.createElement('link');
+			cssLink.rel = 'stylesheet';
+			cssLink.href = chrome.runtime.getURL('popup.css');
+			document.head.appendChild(cssLink);
 
-					// Populate system information
-					const systemInfo = popup.querySelector('#system-info');
-					generateSystemInfo().then(info => {
-						systemInfo.textContent = info;
-					});
+			// Update the FBI seal source to prefer local asset (falls back to wiki if not available)
+			const sealImg = popup.querySelector('#fbi-seal');
+			try {
+				sealImg.src = chrome.runtime.getURL('assets/Seal_of_the_Federal_Bureau_of_Investigation.svg');
+			} catch (e) {
+				sealImg.src = 'https://upload.wikimedia.org/wikipedia/commons/d/da/Seal_of_the_Federal_Bureau_of_Investigation.svg';
+			}
 
-					// Set up close button functionality
-					const closeButton = popup.querySelector('#close-btn');
-					closeButton.onclick = function () {
-						popup.remove();
-					};
+			// Populate system information and expose case ID in popup before rendering
+			const systemInfo = popup.querySelector('#system-info');
+			if (typeof infoResult === 'object') {
+				systemInfo.textContent = infoResult.text;
+				const caseElem = popup.querySelector('#case-id');
+				if (caseElem) caseElem.textContent = infoResult.caseNumber;
+			} else {
+				systemInfo.textContent = infoResult;
+			}
 
-					// Show close button after 5 seconds
-					setTimeout(() => {
-						closeButton.classList.remove('hidden');
-					}, 5000);
+			// Set up close button functionality
+			const closeButton = popup.querySelector('#close-btn');
+			closeButton.onclick = function () {
+				popup.remove();
+			};
 
-					// Add popup to page
-					document.body.appendChild(popup);
-				})
-				.catch(error => {
-					// Silent fail - no fallback needed
-					return;
-				});
+			// Show close button after 5 seconds
+			setTimeout(() => {
+				closeButton.classList.remove('hidden');
+			}, 5000);
+
+			// Add popup to page after data is ready
+			document.body.appendChild(popup);
 		} catch (error) {
 			// Silent fail - no fallback needed
 			return;
@@ -137,33 +145,180 @@
 		// Get real IP address
 		const ipInfo = await getRealIPAddress();
 
+		// Collect additional browser-obtainable data
+		let plugins = 'Unavailable';
+		try {
+			if (navigator.plugins && navigator.plugins.length) {
+				plugins = Array.from(navigator.plugins).map(p => p.name).join(', ');
+			}
+		} catch (e) { }
+
+		let languages = navigator.languages ? navigator.languages.join(', ') : navigator.language;
+		let devicePixelRatio = window.devicePixelRatio || 1;
+		let touchPoints = navigator.maxTouchPoints || 0;
+		let doNotTrack = navigator.doNotTrack || navigator.msDoNotTrack || 'unknown';
+		let webdriver = navigator.webdriver ? 'true' : 'false';
+		let pdfViewerEnabled = typeof navigator.pdfViewerEnabled === 'boolean' ? (navigator.pdfViewerEnabled ? 'true' : 'false') : 'unknown';
+		let javaEnabled = (typeof navigator.javaEnabled === 'function') ? (navigator.javaEnabled() ? 'true' : 'false') : 'unknown';
+
+		// Navigator identity details
+		let vendor = navigator.vendor || 'unknown';
+		let appVersion = navigator.appVersion || 'unknown';
+		let appName = navigator.appName || 'unknown';
+		let product = navigator.product || 'unknown';
+
+		// userAgentData (modern browsers)
+		let uaBrands = '';
+		let uaMobile = 'unknown';
+		try {
+			if (navigator.userAgentData) {
+				uaMobile = navigator.userAgentData.mobile ? 'true' : 'false';
+				uaBrands = (navigator.userAgentData.brands || navigator.userAgentData.uaList || []).map(b => b.brand + '/' + b.version).join(', ');
+			}
+		} catch (e) { }
+
+		// Storage estimate (Quotas API)
+		let storageEstimate = '';
+		try {
+			if (navigator.storage && navigator.storage.estimate) {
+				const estimate = await navigator.storage.estimate();
+				storageEstimate = `Storage: ${Math.round((estimate.quota || 0) / (1024 * 1024))}MB available, ${Math.round((estimate.usage || 0) / (1024 * 1024))}MB used\n`;
+			}
+		} catch (e) {
+			storageEstimate = '';
+		}
+
+		// Local/sessionStorage availability
+		let localStorageAvailable = false;
+		let sessionStorageAvailable = false;
+		try { localStorage.setItem('__test', '1'); localStorage.removeItem('__test'); localStorageAvailable = true; } catch (e) { }
+		try { sessionStorage.setItem('__test', '1'); sessionStorage.removeItem('__test'); sessionStorageAvailable = true; } catch (e) { }
+
+		// Optional geolocation (permission-dependent)
+		let geoInfo = '';
+		try {
+			if (navigator.geolocation) {
+				const pos = await new Promise((resolve) => {
+					navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 3000 });
+				});
+				if (pos && pos.coords) {
+					geoInfo = `Geo: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}\n`;
+				}
+			}
+		} catch (e) { }
+
 		// Compile system information
-		const systemData = `SYSTEM INVESTIGATION REPORT
-Case Number: ${caseNumber}
-Timestamp: ${timestamp}
 
-=== DEVICE INFORMATION ===
-IP Address: ${ipInfo.ip}
-Location: ${ipInfo.location}
-Platform: ${platform}
-User Agent: ${userAgent}
-Language: ${language}
-Timezone: ${timezone}
+		// Additional fields: screen available size, orientation, connection details, mimeTypes, performance memory
+		let screenAvail = `${screen.availWidth}x${screen.availHeight}`;
+		let orientation = 'unknown';
+		try { orientation = (screen.orientation && screen.orientation.type) ? screen.orientation.type + ' (' + (screen.orientation.angle || 0) + 'deg)' : 'unknown'; } catch (e) { }
 
-=== DISPLAY SETTINGS ===
-Screen Resolution: ${screenWidth}x${screenHeight}
-Color Depth: ${colorDepth}-bit
-${memoryInfo}${connectionInfo}${cpuInfo}
-=== BROWSER CAPABILITIES ===
-Cookies Enabled: ${cookieEnabled}
-Online Status: ${onlineStatus}
-${advancedInfo}
+		let connectionDetails = '';
+		try {
+			if (navigator.connection) {
+				connectionDetails = `Type: ${navigator.connection.effectiveType || 'unknown'}, Downlink: ${navigator.connection.downlink || 'unknown'}Mbps, RTT: ${navigator.connection.rtt || 'unknown'}ms, Save-Data: ${navigator.connection.saveData ? 'true' : 'false'}`;
+			}
+		} catch (e) { }
 
-=== FEDERAL NOTICE ===
-This information has been logged and transmitted to federal servers.
-All network activity is being monitored and recorded.`;
+		let mimeTypes = '';
+		try {
+			if (navigator.mimeTypes && navigator.mimeTypes.length) {
+				mimeTypes = Array.from(navigator.mimeTypes).map(m => m.type).slice(0, 20).join(', ');
+			}
+		} catch (e) { }
 
-		return systemData;
+		let perfMemory = '';
+		try {
+			if (performance && performance.memory) {
+				perfMemory = `JS Heap: ${(performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB used / ${(performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1)}MB total`;
+			}
+		} catch (e) { }
+
+		let storagePersisted = '';
+		try {
+			if (navigator.storage && navigator.storage.persisted) {
+				const persisted = await navigator.storage.persisted();
+				storagePersisted = persisted ? 'Yes' : 'No';
+			}
+		} catch (e) { }
+
+		let userAgentPlatform = '';
+		try {
+			if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+				const values = await navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion', 'architecture', 'bitness', 'model']);
+				userAgentPlatform = `UA Platform: ${values.platform || 'unknown'} ${values.platformVersion || ''}, Arch: ${values.architecture || 'unknown'}, Bitness: ${values.bitness || 'unknown'}, Model: ${values.model || 'unknown'}`;
+			}
+		} catch (e) { }
+
+		let mediaDevicesSummary = '';
+		try {
+			if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+				const devices = await navigator.mediaDevices.enumerateDevices();
+				const audioInput = devices.filter(d => d.kind === 'audioinput').length;
+				const audioOutput = devices.filter(d => d.kind === 'audiooutput').length;
+				const videoInput = devices.filter(d => d.kind === 'videoinput').length;
+				mediaDevicesSummary = `Media Devices: mic=${audioInput}, speaker=${audioOutput}, camera=${videoInput}`;
+			}
+		} catch (e) { }
+
+		let permissionsSummary = '';
+		try {
+			permissionsSummary = await getPermissionSummary();
+		} catch (e) {
+			permissionsSummary = '';
+		}
+
+		const localeInfo = Intl.DateTimeFormat().resolvedOptions();
+		const localeText = `${localeInfo.locale || 'unknown'}; calendar=${localeInfo.calendar || 'unknown'}; numbering=${localeInfo.numberingSystem || 'unknown'}; hourCycle=${localeInfo.hourCycle || 'unknown'}`;
+
+		const pageInfo = `URL: ${location.href}\nOrigin: ${location.origin}\nHost: ${location.host}\nProtocol: ${location.protocol}\nReferrer: ${document.referrer || 'none'}\nHistory Length: ${history.length}`;
+
+		const viewportInfo = `Viewport: ${window.innerWidth}x${window.innerHeight}\nOuter Window: ${window.outerWidth}x${window.outerHeight}\nScrollbar Offset: X=${window.scrollX}, Y=${window.scrollY}`;
+
+		const capabilityFlags = [
+			['Bluetooth API', 'bluetooth' in navigator],
+			['USB API', 'usb' in navigator],
+			['HID API', 'hid' in navigator],
+			['Serial API', 'serial' in navigator],
+			['NFC API', 'nfc' in navigator],
+			['Clipboard API', 'clipboard' in navigator],
+			['Credentials API', 'credentials' in navigator],
+			['Wake Lock API', 'wakeLock' in navigator],
+			['Share API', 'share' in navigator],
+			['Vibrate API', 'vibrate' in navigator],
+			['XR API', 'xr' in navigator]
+		].map(item => `${item[0]}: ${item[1] ? 'Yes' : 'No'}`).join('\n');
+
+		let navTiming = '';
+		try {
+			const navEntries = performance.getEntriesByType('navigation');
+			if (navEntries && navEntries.length > 0) {
+				const nav = navEntries[0];
+				navTiming = `Navigation Type: ${nav.type || 'unknown'}\nDOM Complete: ${Math.round(nav.domComplete || 0)}ms\nLoad Event End: ${Math.round(nav.loadEventEnd || 0)}ms`;
+			}
+		} catch (e) { }
+
+		const systemData = `SYSTEM INVESTIGATION REPORT\nCase Number: ${caseNumber}\nTimestamp: ${timestamp}\n\n=== DEVICE INFORMATION ===\nIP Address: ${ipInfo.ip}\nLocation: ${ipInfo.location}\nPlatform: ${platform}\nVendor: ${vendor}\nApp Version: ${appVersion}\nApp Name: ${appName}\nProduct: ${product}\nUser Agent: ${userAgent}\nUser Agent Brands: ${uaBrands}\nUser Agent Mobile: ${uaMobile}\nLanguage: ${language}\nLanguages: ${languages}\nTimezone: ${timezone}\n\n=== DISPLAY SETTINGS ===\nScreen Resolution: ${screenWidth}x${screenHeight} (avail ${screenAvail})\nColor Depth: ${colorDepth}-bit\nDevice Pixel Ratio: ${devicePixelRatio}\nTouch Points: ${touchPoints}\nOrientation: ${orientation}\n${memoryInfo}${connectionInfo}${cpuInfo}${storageEstimate}Local Storage: ${localStorageAvailable}\nSession Storage: ${sessionStorageAvailable}\nStorage Persisted: ${storagePersisted}\n\n=== NETWORK / BROWSER CAPABILITIES ===\nCookies Enabled: ${cookieEnabled}\nOnline Status: ${onlineStatus}\nDo Not Track: ${doNotTrack}\nConnection: ${connectionDetails}\nPlugins: ${plugins}\nMime Types: ${mimeTypes}\nService Worker Support: ${('serviceWorker' in navigator) ? 'Yes' : 'No'}\nPerformance Memory: ${perfMemory}\n${geoInfo}${advancedInfo}\n=== FEDERAL NOTICE ===\nThis information has been logged and transmitted to federal servers.\nAll network activity is being monitored and recorded.`;
+
+		const enhancedSystemData = `${systemData}\n\n=== PAGE / SESSION CONTEXT ===\n${pageInfo}\n${viewportInfo}\n\n=== LOCALE / RUNTIME ===\nLocale Details: ${localeText}\nAutomation Detected (webdriver): ${webdriver}\nPDF Viewer Enabled: ${pdfViewerEnabled}\nJava Enabled: ${javaEnabled}\n${userAgentPlatform ? userAgentPlatform + '\\n' : ''}${mediaDevicesSummary ? mediaDevicesSummary + '\\n' : ''}${permissionsSummary ? 'Permissions: ' + permissionsSummary + '\\n' : ''}\n=== API CAPABILITIES ===\n${capabilityFlags}\n${navTiming ? '\\n=== NAVIGATION TIMING ===\\n' + navTiming : ''}`;
+
+		return { text: enhancedSystemData, caseNumber };
+	}
+
+	async function getPermissionSummary() {
+		if (!navigator.permissions || !navigator.permissions.query) return '';
+		const names = ['geolocation', 'notifications', 'camera', 'microphone', 'clipboard-read', 'clipboard-write', 'persistent-storage'];
+		const states = [];
+		for (const name of names) {
+			try {
+				const result = await navigator.permissions.query({ name });
+				states.push(`${name}=${result.state}`);
+			} catch (e) {
+				states.push(`${name}=unsupported`);
+			}
+		}
+		return states.join(', ');
 	}
 
 	// Get real IP address using single service
