@@ -9,33 +9,126 @@
 </head>
 
 <body>
-	<div class="header">
-		<img class="logo" src="assets/Seal_of_the_Federal_Bureau_of_Investigation.svg" alt="FBI Seal">
-		<h1 class="title">FBI Jumpscare</h1>
-		<p class="subtitle">Configuration Panel</p>
+	<div id="discovery-view" class="discovery-view hidden">
+		<img id="discovery-seal" class="discovery-seal" src="assets/Seal_of_the_Federal_Bureau_of_Investigation.svg"
+			alt="FBI Seal">
+		<p id="discovery-message" class="discovery-message"></p>
+		<p id="discovery-subtext" class="discovery-subtext">This is a prank browser extension — no data was collected or transmitted.</p>
+		<button id="discoveryOkBtn" class="btn btn-primary">OK</button>
 	</div>
 
-	<div id="status" class="status hidden"></div>
-
-	<div class="setting-group">
-		<label class="setting-label">Jumpscare Probability</label>
-		<div class="percentage-control">
-			<input type="range" id="percentageSlider" class="percentage-slider" min="0" max="100" value="1" step="1">
-			<span id="percentageDisplay" class="percentage-display">1%</span>
+	<div id="setup-view" class="setup-view">
+		<div class="header">
+			<img class="logo" src="assets/Seal_of_the_Federal_Bureau_of_Investigation.svg" alt="FBI Seal">
+			<h1 class="title">FBI Jumpscare</h1>
+			<p class="subtitle">Configuration Panel</p>
 		</div>
+
+		<div id="status" class="status hidden"></div>
+
+		<div class="tab-bar" role="tablist">
+			<button type="button" class="tab-btn active" data-tab="panel-general">General</button>
+			<button type="button" class="tab-btn" data-tab="panel-timing">Timing</button>
+			<button type="button" class="tab-btn" data-tab="panel-content">Content</button>
+			<button type="button" class="tab-btn" data-tab="panel-advanced">Advanced</button>
+		</div>
+
+		<section id="panel-general" class="tab-panel" data-panel>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="enabledToggle"> Enabled</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label" for="percentageSlider">Jumpscare Probability</label>
+				<div class="percentage-control">
+					<input type="range" id="percentageSlider" class="percentage-slider" min="0" max="100" value="1"
+						step="1">
+					<span id="percentageDisplay" class="percentage-display">1%</span>
+				</div>
+				<div class="preset-row">
+					<button type="button" class="btn btn-small preset-btn" data-preset="0">Off</button>
+					<button type="button" class="btn btn-small preset-btn" data-preset="1">Rare</button>
+					<button type="button" class="btn btn-small preset-btn" data-preset="25">Often</button>
+					<button type="button" class="btn btn-small preset-btn" data-preset="100">Chaos</button>
+				</div>
+			</div>
+			<button type="button" id="testBtn" class="btn btn-secondary full-width">Test Now</button>
+		</section>
+
+		<section id="panel-timing" class="tab-panel hidden" data-panel>
+			<div class="setting-group">
+				<label class="setting-label" for="delayMinSlider">Min delay (sec): <span id="delayMinDisplay">2</span></label>
+				<input type="range" id="delayMinSlider" min="0" max="30" value="2" step="1">
+			</div>
+			<div class="setting-group">
+				<label class="setting-label" for="delayMaxSlider">Max delay (sec): <span id="delayMaxDisplay">12</span></label>
+				<input type="range" id="delayMaxSlider" min="0" max="60" value="12" step="1">
+			</div>
+			<div class="setting-group">
+				<label class="setting-label" for="ackLockSlider">Acknowledge lock (sec): <span
+						id="ackLockDisplay">5</span></label>
+				<input type="range" id="ackLockSlider" min="0" max="15" value="5" step="1">
+			</div>
+			<div class="setting-group">
+				<label class="setting-label" for="cooldownSlider">Cooldown per tab (sec): <span
+						id="cooldownDisplay">0</span></label>
+				<input type="range" id="cooldownSlider" min="0" max="300" value="0" step="5">
+			</div>
+		</section>
+
+		<section id="panel-content" class="tab-panel hidden" data-panel>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="showSystemDumpToggle"> Show system dump</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="showDisclaimerToggle"> Show prank references</label>
+				<p class="setting-hint">Footer disclaimer, system report note, and discovery subtext.</p>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label" for="discoveryMessageInput">Discovery message</label>
+				<textarea id="discoveryMessageInput" class="text-area" rows="4"></textarea>
+				<button type="button" id="previewDiscoveryBtn" class="btn btn-small">Preview discovery message</button>
+			</div>
+		</section>
+
+		<section id="panel-advanced" class="tab-panel hidden" data-panel>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="includeIpToggle"> IP geolocation lookup</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="includeGpsToggle"> GPS (if already granted)</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="verboseToggle"> Verbose fingerprint</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="animationToggle"> Entrance animation</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label"><input type="checkbox" id="soundToggle"> Sound sting</label>
+				<p class="setting-hint">Classic PC beep via Web Audio (off by default).</p>
+			</div>
+			<div class="setting-group">
+				<span class="setting-label">Site mode</span>
+				<label><input type="radio" name="siteMode" value="all"> All sites</label>
+				<label><input type="radio" name="siteMode" value="blocklist"> Blocklist</label>
+				<label><input type="radio" name="siteMode" value="allowlist"> Allowlist</label>
+			</div>
+			<div class="setting-group">
+				<label class="setting-label" for="domainListInput">Domain list (one per line)</label>
+				<textarea id="domainListInput" class="text-area" rows="4"></textarea>
+			</div>
+			<button type="button" id="resetBtn" class="btn btn-small">Reset to defaults</button>
+		</section>
+
+		<div class="footer-actions">
+			<button type="button" id="disarmBtn" class="btn btn-secondary hidden">Disarm</button>
+			<button type="button" id="armBtn" class="btn btn-primary">Arm Prank</button>
+		</div>
+
+		<p class="info">Settings save automatically. Arm the prank to hide settings from the victim.</p>
 	</div>
 
-	<div class="buttons">
-		<button id="saveBtn" class="btn btn-primary">Save Settings</button>
-		<button id="testBtn" class="btn btn-secondary">Test Now</button>
-	</div>
-
-	<div class="info">
-		Higher percentages = more frequent jumpscares<br>
-		0% = completely disabled<br>
-		Settings are saved automatically when adjusted. Use "Save Settings" to persist and notify open tabs immediately.
-	</div>
-
+	<script src="settings-defaults.js"></script>
 	<script src="extension-popup.js"></script>
 </body>
 

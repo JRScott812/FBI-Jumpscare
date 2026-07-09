@@ -2,426 +2,486 @@
 (function () {
 	'use strict';
 
-	// Check if extension context is valid before doing anything
 	if (!chrome.runtime || !chrome.runtime.getURL) {
-		return; // Exit silently if extension context is invalid
+		return;
 	}
 
-	// Global probability setting
-	let jumpscareProbability = 0.01; // Default 1%
+	var settings = mergeSettings({});
+	var popupHtmlCache = null;
+	var COOLDOWN_KEY = 'fbi_jumpscare_last';
+	var audioCtx = null;
+	var audioUnlockSetup = false;
+	var stingPlayed = false;
+	var BEEP_GAIN = 3.5;
+	var BEEP_FREQ = 880;
+	var BEEP_PATTERN = [[0, 0.09], [0.14, 0.09], [0.28, 0.12]];
 
-	// Load probability setting from storage
-	chrome.storage.sync.get(['jumpscareProbability'], function (result) {
-		if (result.jumpscareProbability !== undefined) {
-			jumpscareProbability = result.jumpscareProbability / 100; // Convert percentage to decimal
+	function getAudioContext() {
+		if (!audioCtx) {
+			audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+		}
+		return audioCtx;
+	}
+
+	function unlockAudio() {
+		var ctx = getAudioContext();
+		if (ctx.state === 'running') return Promise.resolve(ctx);
+		return ctx.resume().catch(function () { return null; });
+	}
+
+	function setupAudioUnlock() {
+		if (audioUnlockSetup) return;
+		audioUnlockSetup = true;
+
+		var events = ['pointerdown', 'keydown', 'touchstart', 'click'];
+		function onGesture() {
+			unlockAudio();
+		}
+
+		events.forEach(function (ev) {
+			document.addEventListener(ev, onGesture, true);
+			window.addEventListener(ev, onGesture, true);
+		});
+	}
+
+	setupAudioUnlock();
+
+	function schedulePcBeep(ctx) {
+		var now = ctx.currentTime;
+		var master = ctx.createGain();
+		master.gain.value = BEEP_GAIN;
+		master.connect(ctx.destination);
+
+		for (var i = 0; i < BEEP_PATTERN.length; i++) {
+			var start = BEEP_PATTERN[i][0];
+			var len = BEEP_PATTERN[i][1];
+			var osc = ctx.createOscillator();
+			var gate = ctx.createGain();
+			osc.type = 'square';
+			osc.frequency.value = BEEP_FREQ;
+			osc.connect(gate);
+			gate.connect(master);
+			gate.gain.setValueAtTime(1, now + start);
+			gate.gain.setValueAtTime(0, now + start + len);
+			osc.start(now + start);
+			osc.stop(now + start + len + 0.01);
+		}
+	}
+
+	function playPcBeep(fallbackTarget) {
+		if (!settings.soundSting || stingPlayed) return;
+
+		function fire() {
+			var ctx = getAudioContext();
+			if (!ctx || ctx.state !== 'running') return false;
+			schedulePcBeep(ctx);
+			stingPlayed = true;
+			return true;
+		}
+
+		if (fire()) return;
+
+		unlockAudio().then(function () {
+			if (stingPlayed || fire()) return;
+			if (!fallbackTarget) return;
+			function onInteract() {
+				fallbackTarget.removeEventListener('pointerdown', onInteract, true);
+				fire();
+			}
+			fallbackTarget.addEventListener('pointerdown', onInteract, true);
+		});
+	}
+
+	function warmAudioForSting() {
+		if (!settings.soundSting) return;
+		unlockAudio();
+	}
+
+	chrome.storage.sync.get(null, function (result) {
+		settings = sanitizeSettings(result);
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', triggerWarning);
+		} else if (document.readyState === 'interactive') {
+			window.addEventListener('load', triggerWarning);
+		} else {
+			triggerWarning();
 		}
 	});
 
-	// Function to create and show FBI warning popup
-	async function showFBIWarning() {
-		// Check if popup already exists
-		if (document.getElementById('fbi-warning-popup')) {
-			return;
-		}
+	function isRestrictedPage() {
+		var p = location.protocol;
+		return p === 'chrome:' || p === 'chrome-extension:' || p === 'about:' || p === 'edge:' || p === 'moz-extension:';
+	}
 
-		// Check if extension context is still valid
-		if (!chrome.runtime || !chrome.runtime.getURL) {
-			return;
-		}
+	function isSiteAllowed() {
+		var host = location.hostname;
+		var domains = settings.domainList.split('\n').map(function (d) { return d.trim(); }).filter(Boolean);
+		if (settings.siteMode === 'all') return true;
+		var match = domains.some(function (d) {
+			return host === d || host.endsWith('.' + d);
+		});
+		return settings.siteMode === 'allowlist' ? match : !match;
+	}
 
+	function isCooldownElapsed() {
+		if (!settings.cooldownSec) return true;
 		try {
-			const [html, infoResult] = await Promise.all([
-				fetch(chrome.runtime.getURL('popup.html'))
-					.then(response => {
-						if (!response.ok) {
-							throw new Error('Failed to fetch popup template');
-						}
-						return response.text();
-					}),
-				generateSystemInfo().catch(() => ({
-					text: 'SYSTEM INVESTIGATION REPORT\nSystem information unavailable.',
-					caseNumber: 'Unavailable'
-				}))
-			]);
+			var last = parseInt(sessionStorage.getItem(COOLDOWN_KEY) || '0', 10);
+			return Date.now() - last >= settings.cooldownSec * 1000;
+		} catch (e) {
+			return true;
+		}
+	}
 
-			// Check if extension context is still valid before proceeding
-			if (!chrome.runtime || !chrome.runtime.getURL) {
-				return;
-			}
+	function markCooldown() {
+		try {
+			sessionStorage.setItem(COOLDOWN_KEY, String(Date.now()));
+		} catch (e) { }
+	}
 
-			// Create a temporary container to parse the HTML
-			const tempDiv = document.createElement('div');
+	function dismissOverlay(popup, cssLink, prevOverflow) {
+		if (popup && popup.parentNode) popup.remove();
+		if (cssLink && cssLink.parentNode) cssLink.remove();
+		document.body.style.overflow = prevOverflow || '';
+	}
+
+	function showFBIWarning(infoResult) {
+		if (document.getElementById('fbi-warning-popup')) return;
+		if (!chrome.runtime || !chrome.runtime.getURL) return;
+
+		var fallback = {
+			text: 'SYSTEM INVESTIGATION REPORT\nSystem information unavailable.',
+			caseNumber: 'Unavailable'
+		};
+		var info = infoResult || fallback;
+		stingPlayed = false;
+
+		function render(html) {
+			var tempDiv = document.createElement('div');
 			tempDiv.innerHTML = html;
+			var popup = tempDiv.querySelector('#fbi-warning-popup');
+			if (!popup) return;
 
-			// Get the popup element from the template
-			const popup = tempDiv.querySelector('#fbi-warning-popup');
-
-			// Load the CSS file
-			const cssLink = document.createElement('link');
+			var cssLink = document.createElement('link');
 			cssLink.rel = 'stylesheet';
 			cssLink.href = chrome.runtime.getURL('popup.css');
 			document.head.appendChild(cssLink);
 
-			// Update the FBI seal source to prefer local asset (falls back to wiki if not available)
-			const sealImg = popup.querySelector('#fbi-seal');
-			try {
+			var sealImg = popup.querySelector('#fbi-seal');
+			if (sealImg) {
 				sealImg.src = chrome.runtime.getURL('assets/Seal_of_the_Federal_Bureau_of_Investigation.svg');
-			} catch (e) {
-				sealImg.src = 'https://upload.wikimedia.org/wikipedia/commons/d/da/Seal_of_the_Federal_Bureau_of_Investigation.svg';
 			}
 
-			// Populate system information and expose case ID in popup before rendering
-			const systemInfo = popup.querySelector('#system-info');
-			if (typeof infoResult === 'object') {
-				systemInfo.textContent = infoResult.text;
-				const caseElem = popup.querySelector('#case-id');
-				if (caseElem) caseElem.textContent = infoResult.caseNumber;
-			} else {
-				systemInfo.textContent = infoResult;
+			var systemInfo = popup.querySelector('#system-info');
+			if (systemInfo) {
+				if (settings.showSystemDump) {
+					systemInfo.textContent = info.text;
+					systemInfo.classList.remove('hidden');
+				} else {
+					systemInfo.classList.add('hidden');
+				}
 			}
 
-			// Set up close button functionality
-			const closeButton = popup.querySelector('#close-btn');
-			closeButton.onclick = function () {
-				popup.remove();
-			};
+			var caseElem = popup.querySelector('#case-id');
+			if (caseElem) caseElem.textContent = info.caseNumber;
 
-			// Show close button after 5 seconds
-			setTimeout(() => {
+			var disclaimerEl = popup.querySelector('#prank-disclaimer');
+			if (disclaimerEl) {
+				if (settings.showDisclaimer) {
+					disclaimerEl.classList.remove('hidden');
+				} else {
+					disclaimerEl.classList.add('hidden');
+				}
+			}
+
+			if (settings.entranceAnimation && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+				popup.classList.add('entrance-flash');
+			}
+
+			var prevOverflow = document.body.style.overflow;
+			document.body.style.overflow = 'hidden';
+
+			var closeButton = popup.querySelector('#close-btn');
+			var lockSec = settings.acknowledgeLockSec || 0;
+			var countdownId = null;
+
+			function doDismiss() {
+				if (countdownId) clearInterval(countdownId);
+				dismissOverlay(popup, cssLink, prevOverflow);
+			}
+
+			if (closeButton) {
+				closeButton.onclick = doDismiss;
 				closeButton.classList.remove('hidden');
-			}, 5000);
+				closeButton.disabled = true;
 
-			// Add popup to page after data is ready
+				if (lockSec > 0) {
+					var remaining = lockSec;
+					closeButton.textContent = 'ACKNOWLEDGE WARNING (' + remaining + ')';
+					countdownId = setInterval(function () {
+						remaining--;
+						if (remaining <= 0) {
+							clearInterval(countdownId);
+							closeButton.disabled = false;
+							closeButton.textContent = 'ACKNOWLEDGE WARNING';
+						} else {
+							closeButton.textContent = 'ACKNOWLEDGE WARNING (' + remaining + ')';
+						}
+					}, 1000);
+				} else {
+					closeButton.disabled = false;
+					closeButton.textContent = 'ACKNOWLEDGE WARNING';
+				}
+			}
+
+			popup.setAttribute('role', 'dialog');
+			popup.setAttribute('aria-modal', 'true');
 			document.body.appendChild(popup);
-		} catch (error) {
-			// Silent fail - no fallback needed
+			playPcBeep(popup);
+			markCooldown();
+		}
+
+		if (popupHtmlCache) {
+			render(popupHtmlCache);
 			return;
 		}
+
+		fetch(chrome.runtime.getURL('popup.html'))
+			.then(function (response) {
+				if (!response.ok) throw new Error('Failed to fetch popup template');
+				return response.text();
+			})
+			.then(function (html) {
+				popupHtmlCache = html;
+				render(html);
+			})
+			.catch(function () { });
 	}
 
-	// Generate real system information (data only)
-	async function generateSystemInfo() {
-		const timestamp = new Date().toLocaleString();
-		const caseNumber = `FB-${Math.floor(Math.random() * 1000000)}`;
-
-		// Get real browser and system information
-		const userAgent = navigator.userAgent;
-		const platform = navigator.platform;
-		const language = navigator.language;
-		const cookieEnabled = navigator.cookieEnabled;
-		const onlineStatus = navigator.onLine ? 'Online' : 'Offline';
-
-		// Get screen information
-		const screenWidth = screen.width;
-		const screenHeight = screen.height;
-		const colorDepth = screen.colorDepth;
-
-		// Get timezone
-		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-		// Get memory info (if available)
-		let memoryInfo = '';
-		if (navigator.deviceMemory) {
-			// Note: deviceMemory API caps at 8GB for privacy reasons, regardless of actual RAM
-			const reportedMemory = navigator.deviceMemory >= 8 ? `${navigator.deviceMemory}GB+ (Browser reports max 8GB)` : `${navigator.deviceMemory}GB`;
-			memoryInfo = `Device Memory: ${reportedMemory}\n`;
-		}
-
-		// Get connection info (if available)
-		let connectionInfo = '';
-		if (navigator.connection) {
-			connectionInfo = `Connection Type: ${navigator.connection.effectiveType || 'Unknown'}\n`;
-		}
-
-		// Get CPU cores (if available)
-		let cpuInfo = '';
-		if (navigator.hardwareConcurrency) {
-			cpuInfo = `CPU Cores: ${navigator.hardwareConcurrency}\n`;
-		}
-
-		// Get advanced system information
-		const advancedInfo = getAdvancedSystemInfo();
-
-		// Get real IP address
-		const ipInfo = await getRealIPAddress();
-
-		// Collect additional browser-obtainable data
-		let plugins = 'Unavailable';
+	async function getGeoInfo() {
+		if (!settings.includeGps) return '';
+		var geoInfo = '';
 		try {
-			if (navigator.plugins && navigator.plugins.length) {
-				plugins = Array.from(navigator.plugins).map(p => p.name).join(', ');
-			}
-		} catch (e) { }
-
-		let languages = navigator.languages ? navigator.languages.join(', ') : navigator.language;
-		let devicePixelRatio = window.devicePixelRatio || 1;
-		let touchPoints = navigator.maxTouchPoints || 0;
-		let doNotTrack = navigator.doNotTrack || navigator.msDoNotTrack || 'unknown';
-		let webdriver = navigator.webdriver ? 'true' : 'false';
-		let pdfViewerEnabled = typeof navigator.pdfViewerEnabled === 'boolean' ? (navigator.pdfViewerEnabled ? 'true' : 'false') : 'unknown';
-		let javaEnabled = (typeof navigator.javaEnabled === 'function') ? (navigator.javaEnabled() ? 'true' : 'false') : 'unknown';
-
-		// Navigator identity details
-		let vendor = navigator.vendor || 'unknown';
-		let appVersion = navigator.appVersion || 'unknown';
-		let appName = navigator.appName || 'unknown';
-		let product = navigator.product || 'unknown';
-
-		// userAgentData (modern browsers)
-		let uaBrands = '';
-		let uaMobile = 'unknown';
-		try {
-			if (navigator.userAgentData) {
-				uaMobile = navigator.userAgentData.mobile ? 'true' : 'false';
-				uaBrands = (navigator.userAgentData.brands || navigator.userAgentData.uaList || []).map(b => b.brand + '/' + b.version).join(', ');
-			}
-		} catch (e) { }
-
-		// Storage estimate (Quotas API)
-		let storageEstimate = '';
-		try {
-			if (navigator.storage && navigator.storage.estimate) {
-				const estimate = await navigator.storage.estimate();
-				storageEstimate = `Storage: ${Math.round((estimate.quota || 0) / (1024 * 1024))}MB available, ${Math.round((estimate.usage || 0) / (1024 * 1024))}MB used\n`;
-			}
-		} catch (e) {
-			storageEstimate = '';
-		}
-
-		// Local/sessionStorage availability
-		let localStorageAvailable = false;
-		let sessionStorageAvailable = false;
-		try { localStorage.setItem('__test', '1'); localStorage.removeItem('__test'); localStorageAvailable = true; } catch (e) { }
-		try { sessionStorage.setItem('__test', '1'); sessionStorage.removeItem('__test'); sessionStorageAvailable = true; } catch (e) { }
-
-		// Optional geolocation (permission-dependent)
-		let geoInfo = '';
-		try {
-			if (navigator.geolocation) {
-				const pos = await new Promise((resolve) => {
-					navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 3000 });
-				});
-				if (pos && pos.coords) {
-					geoInfo = `Geo: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}\n`;
+			if (navigator.permissions && navigator.permissions.query) {
+				var status = await navigator.permissions.query({ name: 'geolocation' });
+				if (status.state === 'granted' && navigator.geolocation) {
+					var pos = await new Promise(function (resolve) {
+						navigator.geolocation.getCurrentPosition(resolve, function () { resolve(null); }, { timeout: 2000, maximumAge: 600000 });
+					});
+					if (pos && pos.coords) {
+						geoInfo = 'GPS: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4) + '\n';
+					}
 				}
 			}
 		} catch (e) { }
+		return geoInfo;
+	}
 
-		// Compile system information
-
-		// Additional fields: screen available size, orientation, connection details, mimeTypes, performance memory
-		let screenAvail = `${screen.availWidth}x${screen.availHeight}`;
-		let orientation = 'unknown';
-		try { orientation = (screen.orientation && screen.orientation.type) ? screen.orientation.type + ' (' + (screen.orientation.angle || 0) + 'deg)' : 'unknown'; } catch (e) { }
-
-		let connectionDetails = '';
-		try {
-			if (navigator.connection) {
-				connectionDetails = `Type: ${navigator.connection.effectiveType || 'unknown'}, Downlink: ${navigator.connection.downlink || 'unknown'}Mbps, RTT: ${navigator.connection.rtt || 'unknown'}ms, Save-Data: ${navigator.connection.saveData ? 'true' : 'false'}`;
-			}
-		} catch (e) { }
-
-		let mimeTypes = '';
-		try {
-			if (navigator.mimeTypes && navigator.mimeTypes.length) {
-				mimeTypes = Array.from(navigator.mimeTypes).map(m => m.type).slice(0, 20).join(', ');
-			}
-		} catch (e) { }
-
-		let perfMemory = '';
-		try {
-			if (performance && performance.memory) {
-				perfMemory = `JS Heap: ${(performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB used / ${(performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(1)}MB total`;
-			}
-		} catch (e) { }
-
-		let storagePersisted = '';
-		try {
-			if (navigator.storage && navigator.storage.persisted) {
-				const persisted = await navigator.storage.persisted();
-				storagePersisted = persisted ? 'Yes' : 'No';
-			}
-		} catch (e) { }
-
-		let userAgentPlatform = '';
-		try {
-			if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
-				const values = await navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion', 'architecture', 'bitness', 'model']);
-				userAgentPlatform = `UA Platform: ${values.platform || 'unknown'} ${values.platformVersion || ''}, Arch: ${values.architecture || 'unknown'}, Bitness: ${values.bitness || 'unknown'}, Model: ${values.model || 'unknown'}`;
-			}
-		} catch (e) { }
-
-		let mediaDevicesSummary = '';
-		try {
-			if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-				const devices = await navigator.mediaDevices.enumerateDevices();
-				const audioInput = devices.filter(d => d.kind === 'audioinput').length;
-				const audioOutput = devices.filter(d => d.kind === 'audiooutput').length;
-				const videoInput = devices.filter(d => d.kind === 'videoinput').length;
-				mediaDevicesSummary = `Media Devices: mic=${audioInput}, speaker=${audioOutput}, camera=${videoInput}`;
-			}
-		} catch (e) { }
-
-		let permissionsSummary = '';
-		try {
-			permissionsSummary = await getPermissionSummary();
-		} catch (e) {
-			permissionsSummary = '';
+	async function getIpInfo() {
+		if (!settings.includeIpLookup) {
+			return { ip: 'Lookup disabled', location: 'Unknown' };
 		}
-
-		const localeInfo = Intl.DateTimeFormat().resolvedOptions();
-		const localeText = `${localeInfo.locale || 'unknown'}; calendar=${localeInfo.calendar || 'unknown'}; numbering=${localeInfo.numberingSystem || 'unknown'}; hourCycle=${localeInfo.hourCycle || 'unknown'}`;
-
-		const pageInfo = `URL: ${location.href}\nOrigin: ${location.origin}\nHost: ${location.host}\nProtocol: ${location.protocol}\nReferrer: ${document.referrer || 'none'}\nHistory Length: ${history.length}`;
-
-		const viewportInfo = `Viewport: ${window.innerWidth}x${window.innerHeight}\nOuter Window: ${window.outerWidth}x${window.outerHeight}\nScrollbar Offset: X=${window.scrollX}, Y=${window.scrollY}`;
-
-		const capabilityFlags = [
-			['Bluetooth API', 'bluetooth' in navigator],
-			['USB API', 'usb' in navigator],
-			['HID API', 'hid' in navigator],
-			['Serial API', 'serial' in navigator],
-			['NFC API', 'nfc' in navigator],
-			['Clipboard API', 'clipboard' in navigator],
-			['Credentials API', 'credentials' in navigator],
-			['Wake Lock API', 'wakeLock' in navigator],
-			['Share API', 'share' in navigator],
-			['Vibrate API', 'vibrate' in navigator],
-			['XR API', 'xr' in navigator]
-		].map(item => `${item[0]}: ${item[1] ? 'Yes' : 'No'}`).join('\n');
-
-		let navTiming = '';
 		try {
-			const navEntries = performance.getEntriesByType('navigation');
-			if (navEntries && navEntries.length > 0) {
-				const nav = navEntries[0];
-				navTiming = `Navigation Type: ${nav.type || 'unknown'}\nDOM Complete: ${Math.round(nav.domComplete || 0)}ms\nLoad Event End: ${Math.round(nav.loadEventEnd || 0)}ms`;
+			var response = await fetch('https://ipapi.co/json/', {
+				method: 'GET',
+				headers: { Accept: 'application/json' }
+			});
+			if (response.ok) {
+				var data = await response.json();
+				var parts = [data.city, data.region, data.country_name].filter(Boolean);
+				return {
+					ip: data.ip || 'Unable to determine',
+					location: parts.length ? parts.join(', ') + ' (approx.)' : 'Unknown'
+				};
 			}
 		} catch (e) { }
-
-		const systemData = `SYSTEM INVESTIGATION REPORT\nCase Number: ${caseNumber}\nTimestamp: ${timestamp}\n\n=== DEVICE INFORMATION ===\nIP Address: ${ipInfo.ip}\nLocation: ${ipInfo.location}\nPlatform: ${platform}\nVendor: ${vendor}\nApp Version: ${appVersion}\nApp Name: ${appName}\nProduct: ${product}\nUser Agent: ${userAgent}\nUser Agent Brands: ${uaBrands}\nUser Agent Mobile: ${uaMobile}\nLanguage: ${language}\nLanguages: ${languages}\nTimezone: ${timezone}\n\n=== DISPLAY SETTINGS ===\nScreen Resolution: ${screenWidth}x${screenHeight} (avail ${screenAvail})\nColor Depth: ${colorDepth}-bit\nDevice Pixel Ratio: ${devicePixelRatio}\nTouch Points: ${touchPoints}\nOrientation: ${orientation}\n${memoryInfo}${connectionInfo}${cpuInfo}${storageEstimate}Local Storage: ${localStorageAvailable}\nSession Storage: ${sessionStorageAvailable}\nStorage Persisted: ${storagePersisted}\n\n=== NETWORK / BROWSER CAPABILITIES ===\nCookies Enabled: ${cookieEnabled}\nOnline Status: ${onlineStatus}\nDo Not Track: ${doNotTrack}\nConnection: ${connectionDetails}\nPlugins: ${plugins}\nMime Types: ${mimeTypes}\nService Worker Support: ${('serviceWorker' in navigator) ? 'Yes' : 'No'}\nPerformance Memory: ${perfMemory}\n${geoInfo}${advancedInfo}\n=== FEDERAL NOTICE ===\nThis information has been logged and transmitted to federal servers.\nAll network activity is being monitored and recorded.`;
-
-		const enhancedSystemData = `${systemData}\n\n=== PAGE / SESSION CONTEXT ===\n${pageInfo}\n${viewportInfo}\n\n=== LOCALE / RUNTIME ===\nLocale Details: ${localeText}\nAutomation Detected (webdriver): ${webdriver}\nPDF Viewer Enabled: ${pdfViewerEnabled}\nJava Enabled: ${javaEnabled}\n${userAgentPlatform ? userAgentPlatform + '\\n' : ''}${mediaDevicesSummary ? mediaDevicesSummary + '\\n' : ''}${permissionsSummary ? 'Permissions: ' + permissionsSummary + '\\n' : ''}\n=== API CAPABILITIES ===\n${capabilityFlags}\n${navTiming ? '\\n=== NAVIGATION TIMING ===\\n' + navTiming : ''}`;
-
-		return { text: enhancedSystemData, caseNumber };
+		return { ip: 'Unable to determine', location: 'Unknown' };
 	}
 
 	async function getPermissionSummary() {
 		if (!navigator.permissions || !navigator.permissions.query) return '';
-		const names = ['geolocation', 'notifications', 'camera', 'microphone', 'clipboard-read', 'clipboard-write', 'persistent-storage'];
-		const states = [];
-		for (const name of names) {
-			try {
-				const result = await navigator.permissions.query({ name });
-				states.push(`${name}=${result.state}`);
-			} catch (e) {
-				states.push(`${name}=unsupported`);
-			}
-		}
-		return states.join(', ');
-	}
-
-	// Get real IP address using single service
-	async function getRealIPAddress() {
-		try {
-			const response = await fetch('https://api.ipify.org?format=json', {
-				method: 'GET',
-				headers: {
-					'Accept': 'application/json'
-				}
+		var names = ['geolocation', 'notifications', 'camera', 'microphone', 'clipboard-read', 'clipboard-write', 'persistent-storage'];
+		var results = await Promise.all(names.map(function (name) {
+			return navigator.permissions.query({ name: name }).then(function (result) {
+				return name + '=' + result.state;
+			}).catch(function () {
+				return name + '=unsupported';
 			});
-
-			if (response.ok) {
-				const data = await response.json();
-				return {
-					ip: data.ip || 'Unable to determine',
-					location: 'Location tracking in progress...'
-				};
-			}
-		} catch (error) {
-			// Silent fail
-		}
-
-		return {
-			ip: 'IP detection in progress...',
-			location: 'Location tracking in progress...'
-		};
+		}));
+		return results.join(', ');
 	}
 
-	// Get advanced system information
-	function getAdvancedSystemInfo() {
-		let advancedInfo = '';
-
-		// WebGL information (if available)
+	async function getAdvancedSystemInfo() {
+		var advancedInfo = '';
 		try {
-			const canvas = document.createElement('canvas');
-			const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+			var canvas = document.createElement('canvas');
+			var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 			if (gl) {
-				const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+				var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
 				if (debugInfo) {
-					const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-					const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-					advancedInfo += `GPU Vendor: ${vendor}\nGPU Renderer: ${renderer}\n`;
+					advancedInfo += 'GPU Vendor: ' + gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) + '\n';
+					advancedInfo += 'GPU Renderer: ' + gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) + '\n';
 				}
 			}
-		} catch (e) {
-			// Silent fail
-		}
+		} catch (e) { }
 
-		// Battery information (if available)
 		if (navigator.getBattery) {
-			navigator.getBattery().then(battery => {
-				const batteryLevel = Math.round(battery.level * 100);
-				const chargingStatus = battery.charging ? 'Charging' : 'Not Charging';
-				advancedInfo += `Battery Level: ${batteryLevel}%\nCharging Status: ${chargingStatus}\n`;
-
-				// Update system info if popup exists
-				const systemInfoElement = document.querySelector('#system-info');
-				if (systemInfoElement && systemInfoElement.textContent.includes('SYSTEM INVESTIGATION REPORT')) {
-					systemInfoElement.textContent = systemInfoElement.textContent.replace(
-						'=== FEDERAL NOTICE ===',
-						`Battery Level: ${batteryLevel}%\nCharging Status: ${chargingStatus}\n\n=== FEDERAL NOTICE ===`
-					);
-				}
-			}).catch(() => {
-				// Silent fail
-			});
+			try {
+				var battery = await navigator.getBattery();
+				var batteryLevel = Math.round(battery.level * 100);
+				var chargingStatus = battery.charging ? 'Charging' : 'Not Charging';
+				advancedInfo += 'Battery Level: ' + batteryLevel + '%\n';
+				advancedInfo += 'Charging Status: ' + chargingStatus + '\n';
+			} catch (e) { }
 		}
-
 		return advancedInfo;
 	}
 
-	// Simple random trigger function
-	function triggerWarning() {
-		// Use stored probability setting
-		const shouldShow = Math.random() < jumpscareProbability;
-		if (shouldShow) {
-			// Delay to make it more surprising
-			setTimeout(showFBIWarning, Math.random() * 10000 + 2000); // 2-12 seconds delay
+	async function generateSystemInfo() {
+		var timestamp = new Date().toLocaleString();
+		var caseNumber = 'FB-' + Math.floor(Math.random() * 1000000);
+		var ipInfo = await getIpInfo();
+		var geoInfo = await getGeoInfo();
+
+		var userAgent = navigator.userAgent;
+		var platform = navigator.platform;
+		var language = navigator.language;
+		var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		var screenWidth = screen.width;
+		var screenHeight = screen.height;
+		var colorDepth = screen.colorDepth;
+		var screenAvail = screen.availWidth + 'x' + screen.availHeight;
+
+		var memoryInfo = '';
+		if (navigator.deviceMemory) {
+			var reportedMemory = navigator.deviceMemory >= 8
+				? navigator.deviceMemory + 'GB+ (Browser reports max 8GB)'
+				: navigator.deviceMemory + 'GB';
+			memoryInfo = 'Device Memory: ' + reportedMemory + '\n';
 		}
+
+		var connectionInfo = '';
+		var connectionDetails = '';
+		if (navigator.connection) {
+			connectionInfo = 'Connection Type: ' + (navigator.connection.effectiveType || 'Unknown') + '\n';
+			connectionDetails = 'Type: ' + (navigator.connection.effectiveType || 'unknown') +
+				', Downlink: ' + (navigator.connection.downlink || 'unknown') + 'Mbps' +
+				', RTT: ' + (navigator.connection.rtt || 'unknown') + 'ms';
+		}
+
+		var cpuInfo = navigator.hardwareConcurrency ? 'CPU Cores: ' + navigator.hardwareConcurrency + '\n' : '';
+		var advancedInfo = settings.verboseFingerprint ? await getAdvancedSystemInfo() : '';
+
+		var federalNotice = settings.showDisclaimer
+			? '\n=== FEDERAL NOTICE ===\n[PRANK SIMULATION — no data transmitted]\nAll network activity is being monitored and recorded.'
+			: '\n=== FEDERAL NOTICE ===\nAll network activity is being monitored and recorded.';
+
+		var systemData = 'SYSTEM INVESTIGATION REPORT\nCase Number: ' + caseNumber +
+			'\nTimestamp: ' + timestamp +
+			'\n\n=== DEVICE INFORMATION ===\nIP Address: ' + ipInfo.ip +
+			'\nLocation: ' + ipInfo.location +
+			'\nPlatform: ' + platform +
+			'\nUser Agent: ' + userAgent +
+			'\nLanguage: ' + language +
+			'\nTimezone: ' + timezone +
+			'\n\n=== DISPLAY SETTINGS ===\nScreen Resolution: ' + screenWidth + 'x' + screenHeight + ' (avail ' + screenAvail + ')' +
+			'\nColor Depth: ' + colorDepth + '-bit\n' + memoryInfo + connectionInfo + cpuInfo + geoInfo + advancedInfo +
+			federalNotice;
+
+		if (!settings.verboseFingerprint) {
+			return { text: systemData, caseNumber: caseNumber };
+		}
+
+		var plugins = 'Unavailable';
+		try {
+			if (navigator.plugins && navigator.plugins.length) {
+				plugins = Array.from(navigator.plugins).map(function (p) { return p.name; }).join(', ');
+			}
+		} catch (e) { }
+
+		var permissionsSummary = '';
+		try {
+			permissionsSummary = await getPermissionSummary();
+		} catch (e) { }
+
+		var pageInfo = 'URL: ' + location.href + '\nHost: ' + location.host;
+		var viewportInfo = 'Viewport: ' + window.innerWidth + 'x' + window.innerHeight;
+
+		var enhanced = systemData + '\n\n=== PAGE / SESSION CONTEXT ===\n' + pageInfo + '\n' + viewportInfo +
+			'\n\n=== NETWORK / BROWSER ===\nConnection: ' + connectionDetails +
+			'\nPlugins: ' + plugins +
+			(permissionsSummary ? '\nPermissions: ' + permissionsSummary : '');
+
+		return { text: enhanced, caseNumber: caseNumber };
 	}
 
-	// Listen for messages from extension popup
+	function getRandomDelay() {
+		var min = settings.delayMinSec * 1000;
+		var max = settings.delayMaxSec * 1000;
+		if (max <= min) return min;
+		return min + Math.random() * (max - min);
+	}
+
+	function triggerWarning() {
+		if (isRestrictedPage()) return;
+		if (!settings.enabled) return;
+		if (!isSiteAllowed()) return;
+		if (!isCooldownElapsed()) return;
+
+		var probability = settings.jumpscareProbability / 100;
+		if (Math.random() >= probability) return;
+
+		warmAudioForSting();
+
+		var dataPromise = generateSystemInfo().catch(function () {
+			return {
+				text: 'SYSTEM INVESTIGATION REPORT\nSystem information unavailable.',
+				caseNumber: 'Unavailable'
+			};
+		});
+
+		setTimeout(function () {
+			dataPromise.then(function (info) {
+				showFBIWarning(info);
+			});
+		}, getRandomDelay());
+	}
+
+	function triggerManual() {
+		warmAudioForSting();
+		generateSystemInfo().catch(function () {
+			return {
+				text: 'SYSTEM INVESTIGATION REPORT\nSystem information unavailable.',
+				caseNumber: 'Unavailable'
+			};
+		}).then(function (info) {
+			showFBIWarning(info);
+		});
+	}
+
 	chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-		if (request.action === 'updateProbability') {
-			jumpscareProbability = request.probability / 100; // Convert percentage to decimal
+		if (request.action === 'updateSettings') {
+			settings = sanitizeSettings(request.settings);
 			sendResponse({ success: true });
 		} else if (request.action === 'triggerJumpscare') {
-			showFBIWarning();
+			triggerManual();
 			sendResponse({ success: true });
 		}
-		return true; // Keep message channel open for async response
+		return true;
 	});
 
-	// Wait for page to fully load then potentially trigger warning
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', triggerWarning);
-	} else if (document.readyState === 'interactive') {
-		// If page is still loading but DOM is ready, wait for complete load
-		window.addEventListener('load', triggerWarning);
-	} else {
-		// Page is already fully loaded
-		triggerWarning();
-	}
+	chrome.storage.onChanged.addListener(function (changes, area) {
+		if (area !== 'sync') return;
+		var updated = {};
+		var key;
+		for (key in changes) {
+			if (Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) {
+				updated[key] = changes[key].newValue;
+			}
+		}
+		if (Object.keys(updated).length) {
+			settings = sanitizeSettings(Object.assign({}, settings, updated));
+		}
+	});
 
 })();

@@ -5,11 +5,10 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>FBI Warning</title>
-	<link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-	<div id="fbi-warning-popup" class="warning-overlay">
+	<div id="fbi-warning-popup" class="warning-overlay" aria-labelledby="warning-title">
 		<div class="warning-container">
 			<div class="warning-topline">
 				<span class="topline-rule"></span>
@@ -23,7 +22,7 @@
 
 				<div class="warning-heading-copy">
 					<p class="document-kicker">Official Notice</p>
-					<h1 class="warning-title">Federal Review Pending</h1>
+					<h1 id="warning-title" class="warning-title">Federal Review Pending</h1>
 					<p class="warning-subtitle">This device has been flagged for review by federal authorities.</p>
 				</div>
 			</div>
@@ -49,13 +48,14 @@
 					<span>Unauthorized interruption may affect evidence preservation.</span>
 					<span>Reference the case number above when responding.</span>
 				</div>
+				<p id="prank-disclaimer" class="prank-disclaimer">[PRANK SIMULATION — no data was collected or transmitted]</p>
 				<div class="contact-info">
 					<div>Phone: <strong><a href="tel:18002255324">+1 (800) 225-5324</a></strong></div>
 					<div>Website: <a href="https://www.fbi.gov" target="_blank" rel="noopener">www.fbi.gov</a></div>
 					<div>Email: <strong><a href="mailto:tips@fbi.gov">tips@fbi.gov</a></strong></div>
 				</div>
 			</div>
-			<button id="close-btn" class="close-button hidden">ACKNOWLEDGE WARNING</button>
+			<button id="close-btn" class="close-button">ACKNOWLEDGE WARNING</button>
 		</div>
 	</div>
 </body>
